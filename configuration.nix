@@ -4,7 +4,30 @@
   networking = {
     hostName = "ovh-vps";
     useDHCP = true;
-    firewall.allowedTCPPorts = [ 22 ];
+    firewall.allowedTCPPorts = [ 22 80 443 ];
+  };
+
+  security.acme = {
+    acceptTerms = true;
+    defaults.email = "adrianszuszkiewicz@gmail.com";
+  };
+
+  services.nginx = {
+    enable = true;
+    recommendedTlsSettings = true;
+    recommendedOptimisation = true;
+    recommendedGzipSettings = true;
+    recommendedProxySettings = true;
+
+    virtualHosts."typestrict.dev" = {
+      enableACME = true;
+      forceSSL = true;
+
+      locations."/".extraConfig = ''
+        default_type text/plain;
+        return 200 "Hello, World!\n";
+      '';
+    };
   };
 
   boot.loader.grub.enable = true;
