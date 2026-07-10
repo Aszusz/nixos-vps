@@ -73,6 +73,7 @@
 
   services.openssh = {
     enable = true;
+    openFirewall = false;
     settings = {
       AllowAgentForwarding = false;
       AllowTcpForwarding = false;
