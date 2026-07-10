@@ -22,7 +22,7 @@
     wants = [ "network-online.target" ];
     serviceConfig = {
       Type = "oneshot";
-      Environment = "GIT_SSH_COMMAND=ssh -i /root/.ssh/nixos-vps_deploy -o IdentitiesOnly=yes";
+      Environment = "GIT_SSH_COMMAND=${pkgs.openssh}/bin/ssh -i /root/.ssh/nixos-vps_deploy -o IdentitiesOnly=yes";
       ExecStart = pkgs.writeShellScript "pull-nixos-config" ''
         set -eu
         repo=git@github.com:Aszusz/nixos-vps.git
