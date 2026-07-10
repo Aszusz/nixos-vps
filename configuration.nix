@@ -4,8 +4,9 @@
   networking = {
     hostName = "ovh-vps";
     useDHCP = true;
-    firewall.allowedTCPPorts = [ 22 80 443 ];
+    firewall.allowedTCPPorts = [ 80 443 ];
     firewall.allowedUDPPorts = [ 41641 ];
+    firewall.interfaces."tailscale0".allowedTCPPorts = [ 22 ];
   };
 
   security.acme = {
@@ -73,16 +74,31 @@
   services.openssh = {
     enable = true;
     settings = {
-      PermitRootLogin = "prohibit-password";
+      AllowAgentForwarding = false;
+      AllowTcpForwarding = false;
+      AllowUsers = [ "adrian" ];
+      AuthenticationMethods = "publickey";
+      KbdInteractiveAuthentication = false;
+      LoginGraceTime = "20s";
+      MaxAuthTries = 2;
       PasswordAuthentication = false;
+      PermitEmptyPasswords = false;
+      PermitRootLogin = "no";
+      X11Forwarding = false;
     };
   };
 
   services.tailscale.enable = true;
 
-  users.users.root.openssh.authorizedKeys.keys = [
-    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIECEQ/z3bwstFumB2JDdTZ8V97ttrAXNC3zgTePbXJK3 ovh-vps"
-  ];
+  security.sudo.wheelNeedsPassword = false;
+
+  users.users.adrian = {
+    isNormalUser = true;
+    extraGroups = [ "wheel" ];
+    openssh.authorizedKeys.keys = [
+      "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIECEQ/z3bwstFumB2JDdTZ8V97ttrAXNC3zgTePbXJK3 ovh-vps"
+    ];
+  };
 
   time.timeZone = "Europe/Warsaw";
 
