@@ -22,16 +22,16 @@
     wants = [ "network-online.target" ];
     serviceConfig = {
       Type = "oneshot";
-      Environment = "GIT_SSH_COMMAND=${pkgs.openssh}/bin/ssh -i /root/.ssh/nixos-vps_deploy -o IdentitiesOnly=yes";
       ExecStart = pkgs.writeShellScript "pull-nixos-config" ''
         set -eu
         repo=git@github.com:Aszusz/nixos-vps.git
+        ssh_command="${pkgs.openssh}/bin/ssh -i /root/.ssh/nixos-vps_deploy -o IdentitiesOnly=yes"
         if [ -d /etc/nixos/.git ]; then
-          ${pkgs.git}/bin/git -C /etc/nixos fetch origin main
+          ${pkgs.git}/bin/git -c core.sshCommand="$ssh_command" -C /etc/nixos fetch origin main
           ${pkgs.git}/bin/git -C /etc/nixos reset --hard origin/main
         else
           rm -rf /etc/nixos
-          ${pkgs.git}/bin/git clone --branch main "$repo" /etc/nixos
+          ${pkgs.git}/bin/git -c core.sshCommand="$ssh_command" clone --branch main "$repo" /etc/nixos
         fi
       '';
     };
