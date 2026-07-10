@@ -5,6 +5,7 @@
     hostName = "ovh-vps";
     useDHCP = true;
     firewall.allowedTCPPorts = [ 22 80 443 ];
+    firewall.allowedUDPPorts = [ 41641 ];
   };
 
   security.acme = {
@@ -76,6 +77,8 @@
       PasswordAuthentication = false;
     };
   };
+
+  services.tailscale.enable = true;
 
   users.users.root.openssh.authorizedKeys.keys = [
     "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIECEQ/z3bwstFumB2JDdTZ8V97ttrAXNC3zgTePbXJK3 ovh-vps"
