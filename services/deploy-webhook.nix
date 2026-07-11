@@ -5,9 +5,13 @@ let
   appsJson = builtins.toJSON cfg.apps;
   appsConfig = pkgs.writeText "deploy-webhook-apps.json" appsJson;
   deployWebhook = ../scripts/deploy-webhook.py;
+  appNames = builtins.attrNames cfg.apps;
   allowedUnitPrefixes = builtins.toJSON (
-    map (app: "${app}-deploy@") (builtins.attrNames cfg.apps)
+    map (app: "${app}-deploy@") appNames
   );
+  appRequestDirRules = map (
+    app: "d /run/deploy-webhook/${app} 0700 deploy-webhook deploy-webhook -"
+  ) appNames;
 in
 {
   options.services.deployWebhook = {
@@ -69,7 +73,7 @@ in
       "d /var/lib/deploy-webhook 0700 root root -"
       "d /run/deploy-webhook 0700 deploy-webhook deploy-webhook -"
       "d /run/deploy-webhook/replay 0700 deploy-webhook deploy-webhook -"
-    ];
+    ] ++ appRequestDirRules;
 
     systemd.services.deploy-webhook = {
       description = "Deployment webhook receiver";
