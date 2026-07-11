@@ -1,6 +1,11 @@
 { pkgs, ... }:
 
 {
+  imports = [
+    ./apps/monobara-codex.nix
+    ./services/deploy-webhook.nix
+  ];
+
   networking = {
     hostName = "ovh-vps";
     useDHCP = true;
@@ -34,7 +39,7 @@
 
   boot.loader.grub.enable = true;
 
-  environment.systemPackages = [ pkgs.git ];
+  environment.systemPackages = [ pkgs.git pkgs.podman ];
 
   programs.ssh.knownHosts.github = {
     hostNames = [ "github.com" ];
