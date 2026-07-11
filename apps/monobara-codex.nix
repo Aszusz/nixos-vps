@@ -19,7 +19,7 @@ lib.mkMerge [
 
   {
     services.postgresAdmin.apps.monobara-codex = {
-      domain = "fullstack-db.typestrict.dev";
+      domain = "monobara-db.admin.typestrict.dev";
       port = 18081;
     };
   }

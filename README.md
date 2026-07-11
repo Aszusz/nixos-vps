@@ -103,10 +103,10 @@ Per-app Postgres inspection is provided by pgweb. Each app gets a separate read-
 The `monobara-codex` admin UI is configured at:
 
 ```text
-https://fullstack-db.typestrict.dev
+https://monobara-db.admin.typestrict.dev
 ```
 
-Nginx proxies this host to pgweb on `127.0.0.1:18081` and denies non-Tailscale source addresses. Tailscale clients must resolve this hostname to the VPS Tailscale IP, for example with split DNS or a Tailscale-managed DNS record. Public clients should receive `403 Forbidden`.
+Nginx proxies this host to pgweb on `127.0.0.1:18081` and denies non-Tailscale source addresses. Public DNS should point `*.admin.typestrict.dev` at the VPS public IP for ACME, while Tailscale split DNS should send `admin.typestrict.dev` to the VPS Tailscale IP `100.74.236.19`. The VPS runs dnsmasq on `tailscale0` and answers `*.admin.typestrict.dev` as `100.74.236.19`. Public clients should receive `403 Forbidden`.
 
 Create a read-only database user before enabling access. Example SQL for the `monobara` database:
 
@@ -133,4 +133,4 @@ systemctl is-active pgweb-monobara-codex nginx tailscaled
 curl -fsS -o /dev/null http://127.0.0.1:18081
 ```
 
-Verify from outside Tailscale that `https://fullstack-db.typestrict.dev` is denied, then verify from a Tailscale client that it loads.
+Verify from outside Tailscale that `https://monobara-db.admin.typestrict.dev` is denied, then verify from a Tailscale client that it loads.

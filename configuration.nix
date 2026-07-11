@@ -12,7 +12,8 @@
     useDHCP = true;
     firewall.allowedTCPPorts = [ 80 443 ];
     firewall.allowedUDPPorts = [ 41641 ];
-    firewall.interfaces."tailscale0".allowedTCPPorts = [ 22 ];
+    firewall.interfaces."tailscale0".allowedTCPPorts = [ 22 53 ];
+    firewall.interfaces."tailscale0".allowedUDPPorts = [ 53 ];
   };
 
   security.acme = {
@@ -81,6 +82,16 @@
   };
 
   services.tailscale.enable = true;
+
+  services.dnsmasq = {
+    enable = true;
+    settings = {
+      bind-interfaces = true;
+      interface = "tailscale0";
+      no-resolv = true;
+      address = "/admin.typestrict.dev/100.74.236.19";
+    };
+  };
 
   security.sudo.wheelNeedsPassword = false;
 
