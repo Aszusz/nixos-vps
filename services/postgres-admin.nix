@@ -22,12 +22,15 @@ let
       serviceConfig = {
         Type = "oneshot";
         UMask = "0077";
+        User = "postgres";
         EnvironmentFile = [ app.appEnvFile app.envFile ];
         ExecStart = lib.escapeShellArgs ([
           (lib.getExe pkgs.python3)
           "${pgwebDbAccess}/pgweb-db-access.py"
           "--psql"
           (lib.getExe' pkgs.postgresql "psql")
+          "--admin-user"
+          "postgres"
           "--readonly-role"
           app.readOnlyRole
         ] ++ mkSchemaArgs app.schemas);

@@ -35,19 +35,25 @@ def readonly_password():
     return unquote(password)
 
 
-def psql_base(psql):
-    return [
-        psql,
+def psql_base(args):
+    command = [
+        args.psql,
+        "-d",
+        required_env("POSTGRES_DB"),
+        "-v",
+        "ON_ERROR_STOP=1",
+    ]
+
+    if args.admin_user:
+        return command + ["-U", args.admin_user]
+
+    return command + [
         "-h",
         "127.0.0.1",
         "-p",
         required_env("POSTGRES_PORT"),
         "-U",
         required_env("POSTGRES_USER"),
-        "-d",
-        required_env("POSTGRES_DB"),
-        "-v",
-        "ON_ERROR_STOP=1",
     ]
 
 
@@ -101,6 +107,7 @@ def main():
         description="Ensure pgweb read-only PostgreSQL role and schema grants."
     )
     parser.add_argument("--psql", required=True)
+    parser.add_argument("--admin-user")
     parser.add_argument("--readonly-role", required=True)
     parser.add_argument("--schema", action="append", required=True, dest="schemas")
     args = parser.parse_args()
@@ -108,8 +115,9 @@ def main():
     validate_schemas(args.schemas)
 
     env = os.environ.copy()
-    env["PGPASSWORD"] = required_env("POSTGRES_PASSWORD")
-    psql_args = psql_base(args.psql)
+    if not args.admin_user:
+        env["PGPASSWORD"] = required_env("POSTGRES_PASSWORD")
+    psql_args = psql_base(args)
 
     wait_for_postgres(psql_args, env)
 
