@@ -3,73 +3,10 @@
 let
   cfg = config.services.postgresAdmin;
 
-  quoteSqlString = value: "'${builtins.replaceStrings [ "'" ] [ "''" ] value}'";
+  pgwebDbAccess = ../scripts/pgweb-db-access.py;
 
-  mkDbAccessScript = name: app:
-    pkgs.writeShellScript "pgweb-${name}-db-access" ''
-      set -euo pipefail
-
-      readonly_password="$(${pkgs.python3}/bin/python - <<'PY'
-      import os
-      import urllib.parse
-
-      password = urllib.parse.urlparse(os.environ["PGWEB_DATABASE_URL"]).password
-      if not password:
-          raise SystemExit("PGWEB_DATABASE_URL must include the read-only role password")
-      print(urllib.parse.unquote(password))
-      PY
-      )"
-
-      export PGPASSWORD="$POSTGRES_PASSWORD"
-
-      psql=(
-        ${lib.getExe' pkgs.postgresql "psql"}
-        -h 127.0.0.1
-        -p "$POSTGRES_PORT"
-        -U "$POSTGRES_USER"
-        -d "$POSTGRES_DB"
-        -v ON_ERROR_STOP=1
-      )
-
-      for attempt in $(seq 1 60); do
-        if "''${psql[@]}" -tAc 'SELECT 1' >/dev/null 2>&1; then
-          break
-        fi
-
-        if [ "$attempt" -eq 60 ]; then
-          "''${psql[@]}" -tAc 'SELECT 1' >/dev/null
-        fi
-
-        sleep 2
-      done
-
-      "''${psql[@]}" \
-        -v readonly_role=${lib.escapeShellArg app.readOnlyRole} \
-        -v readonly_password="$readonly_password" \
-        -v database_owner="$POSTGRES_USER" <<'SQL'
-      SELECT format('CREATE ROLE %I LOGIN PASSWORD %L', :'readonly_role', :'readonly_password')
-      WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'readonly_role')
-      \gexec
-
-      SELECT format('ALTER ROLE %I WITH LOGIN PASSWORD %L', :'readonly_role', :'readonly_password')
-      \gexec
-
-      SELECT format('GRANT CONNECT ON DATABASE %I TO %I', current_database(), :'readonly_role')
-      \gexec
-
-      SELECT format('GRANT USAGE ON SCHEMA %I TO %I', schema_name, :'readonly_role')
-      FROM unnest(ARRAY[${lib.concatMapStringsSep ", " quoteSqlString app.schemas}]) AS schema_name
-      \gexec
-
-      SELECT format('GRANT SELECT ON ALL TABLES IN SCHEMA %I TO %I', schema_name, :'readonly_role')
-      FROM unnest(ARRAY[${lib.concatMapStringsSep ", " quoteSqlString app.schemas}]) AS schema_name
-      \gexec
-
-      SELECT format('ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA %I GRANT SELECT ON TABLES TO %I', :'database_owner', schema_name, :'readonly_role')
-      FROM unnest(ARRAY[${lib.concatMapStringsSep ", " quoteSqlString app.schemas}]) AS schema_name
-      \gexec
-      SQL
-    '';
+  mkSchemaArgs = schemas:
+    lib.concatMap (schema: [ "--schema" schema ]) schemas;
 
   mkDbAccessService = name: app: {
     name = "pgweb-${name}-db-access";
@@ -82,7 +19,14 @@ let
         Type = "oneshot";
         UMask = "0077";
         EnvironmentFile = [ app.appEnvFile app.envFile ];
-        ExecStart = mkDbAccessScript name app;
+        ExecStart = lib.escapeShellArgs ([
+          (lib.getExe pkgs.python3)
+          pgwebDbAccess
+          "--psql"
+          (lib.getExe' pkgs.postgresql "psql")
+          "--readonly-role"
+          app.readOnlyRole
+        ] ++ mkSchemaArgs app.schemas);
         ProtectSystem = "strict";
         ProtectHome = true;
         PrivateTmp = true;
