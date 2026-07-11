@@ -94,4 +94,4 @@ curl -fsS https://fullstack.typestrict.dev/health
 
 To deploy immutable image digests instead of tags, send refs like `ghcr.io/aszusz/monobara-codex-web@sha256:<digest>` in `images`. The digest must still use the configured image repository prefix.
 
-To add another app, add a small app declaration under `apps/` using `modules/compose-app.nix`, register its webhook unit, Compose path, and image allowlist in `services.deployWebhook.apps`, create app-specific env files under `/var/lib/<app>/`, and have that repo's CD workflow POST signed release metadata with the shared deploy secret.
+To add another app, add a small app declaration under `apps/` using `modules/compose-app.nix`, create app-specific env files under `/var/lib/<app>/`, and have that repo's CD workflow POST signed release metadata with the shared deploy secret.
