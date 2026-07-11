@@ -30,6 +30,13 @@ let
       bun --cwd packages/db drizzle-kit migrate
 
     ${pkgs.systemd}/bin/systemctl restart monobara-codex-api.service monobara-codex-web.service
+    for attempt in $(${pkgs.coreutils}/bin/seq 1 30); do
+      if ${pkgs.curl}/bin/curl -fsS http://127.0.0.1:3000/health >/dev/null; then
+        exit 0
+      fi
+      ${pkgs.coreutils}/bin/sleep 1
+    done
+
     ${pkgs.curl}/bin/curl -fsS http://127.0.0.1:3000/health >/dev/null
   '';
 in
@@ -104,7 +111,7 @@ in
       Restart = "always";
       RestartSec = "5s";
       ExecStartPre = "-${pkgs.podman}/bin/podman rm -f monobara-codex-web";
-      ExecStart = "${pkgs.podman}/bin/podman run --rm --name monobara-codex-web --publish 127.0.0.1:8080:80 localhost/monobara-codex-web:current";
+      ExecStart = "${pkgs.podman}/bin/podman run --rm --name monobara-codex-web --add-host api:127.0.0.1 --publish 127.0.0.1:8080:80 localhost/monobara-codex-web:current";
       ExecStop = "${pkgs.podman}/bin/podman stop monobara-codex-web";
     };
   };

@@ -44,7 +44,21 @@ let
           return
 
         unit = apps[app].format(tag=tag)
-        subprocess.run(["${pkgs.systemd}/bin/systemctl", "start", unit], check=True)
+        result = subprocess.run(
+          ["${pkgs.systemd}/bin/systemctl", "start", unit],
+          text=True,
+          capture_output=True,
+        )
+        if result.returncode != 0:
+          self.send_response(500)
+          self.send_header("Content-Type", "application/json")
+          self.end_headers()
+          self.wfile.write(json.dumps({
+            "ok": False,
+            "unit": unit,
+            "stderr": result.stderr,
+          }).encode())
+          return
 
         self.send_response(202)
         self.send_header("Content-Type", "application/json")
