@@ -4,6 +4,7 @@ Guidance for agents working on this VPS configuration.
 
 - This repo manages the NixOS VPS `ovh-vps` via `flake.nix` and `configuration.nix`.
 - Use `ssh ovh-vps` for administration. This should connect over Tailscale as user `adrian`.
+- If `ssh ovh-vps` fails with `Permission denied (publickey)` but the key exists, run `ssh-add --apple-load-keychain` and retry before diagnosing the VPS.
 - Do not reopen public SSH. Port `22` must remain available only on `tailscale0`.
 - Public ports should stay limited to web traffic: `80` and `443`, plus Tailscale UDP `41641`.
 - Deploy by pushing to `main`, then running on the VPS: `sudo systemctl start pull-nixos-config.service && sudo nixos-rebuild switch --flake /etc/nixos#ovh-vps`.
