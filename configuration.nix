@@ -4,6 +4,7 @@
   imports = [
     ./apps/monobara-codex.nix
     ./services/deploy-webhook.nix
+    ./services/postgres-admin.nix
   ];
 
   networking = {

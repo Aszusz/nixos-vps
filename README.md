@@ -95,3 +95,42 @@ curl -fsS https://fullstack.typestrict.dev/health
 To deploy immutable image digests instead of tags, send refs like `ghcr.io/aszusz/monobara-codex-web@sha256:<digest>` in `images`. The digest must still use the configured image repository prefix.
 
 To add another app, add a small app declaration under `apps/` using `modules/compose-app.nix`, create app-specific env files under `/var/lib/<app>/`, and have that repo's CD workflow POST signed release metadata with the shared deploy secret.
+
+## Postgres admin UI
+
+Per-app Postgres inspection is provided by pgweb. Each app gets a separate read-only pgweb instance, separate connection string, and separate Tailscale-only virtual host.
+
+The `monobara-codex` admin UI is configured at:
+
+```text
+https://fullstack-db.typestrict.dev
+```
+
+Nginx proxies this host to pgweb on `127.0.0.1:18081` and denies non-Tailscale source addresses. Tailscale clients must resolve this hostname to the VPS Tailscale IP, for example with split DNS or a Tailscale-managed DNS record. Public clients should receive `403 Forbidden`.
+
+Create a read-only database user before enabling access. Example SQL for the `monobara` database:
+
+```sql
+CREATE USER monobara_readonly WITH PASSWORD 'change-me';
+GRANT CONNECT ON DATABASE monobara TO monobara_readonly;
+GRANT USAGE ON SCHEMA public TO monobara_readonly;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO monobara_readonly;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO monobara_readonly;
+```
+
+Create the pgweb environment file on the VPS:
+
+```sh
+sudo install -m 0600 -o root -g root /dev/stdin /var/lib/monobara-codex/pgweb.env <<'EOF'
+PGWEB_DATABASE_URL=postgres://monobara_readonly:change-me@127.0.0.1:15432/monobara?sslmode=disable
+EOF
+```
+
+After deploy, verify from the VPS:
+
+```sh
+systemctl is-active pgweb-monobara-codex nginx tailscaled
+curl -fsS -o /dev/null http://127.0.0.1:18081
+```
+
+Verify from outside Tailscale that `https://fullstack-db.typestrict.dev` is denied, then verify from a Tailscale client that it loads.
