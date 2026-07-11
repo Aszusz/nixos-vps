@@ -21,6 +21,8 @@ lib.mkMerge [
     services.postgresAdmin.apps.monobara-codex = {
       domain = "monobara-db.admin.typestrict.dev";
       port = 18081;
+      readOnlyRole = "monobara_readonly";
+      schemas = [ "public" "drizzle" ];
     };
   }
 ]

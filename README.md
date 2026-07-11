@@ -108,20 +108,7 @@ https://monobara-db.admin.typestrict.dev
 
 Nginx proxies this host to pgweb on `127.0.0.1:18081` and denies non-Tailscale source addresses. Public DNS should point `*.admin.typestrict.dev` at the VPS public IP for ACME, while Tailscale split DNS should send `admin.typestrict.dev` to the VPS Tailscale IP `100.74.236.19`. The VPS runs dnsmasq on `tailscale0`, answers `*.admin.typestrict.dev` as `100.74.236.19`, and forwards other DNS queries to public resolvers. Public clients should receive `403 Forbidden`.
 
-Create a read-only database user before enabling access. Example SQL for the `monobara` database:
-
-```sql
-CREATE USER monobara_readonly WITH PASSWORD 'change-me';
-GRANT CONNECT ON DATABASE monobara TO monobara_readonly;
-GRANT USAGE ON SCHEMA public TO monobara_readonly;
-GRANT SELECT ON ALL TABLES IN SCHEMA public TO monobara_readonly;
-GRANT USAGE ON SCHEMA drizzle TO monobara_readonly;
-GRANT SELECT ON ALL TABLES IN SCHEMA drizzle TO monobara_readonly;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO monobara_readonly;
-ALTER DEFAULT PRIVILEGES IN SCHEMA drizzle GRANT SELECT ON TABLES TO monobara_readonly;
-```
-
-Repeat the schema grants for any additional app-owned schemas that pgweb should inspect.
+The NixOS config creates or updates the read-only Postgres role and grants access to the app-owned schemas declared in `services.postgresAdmin.apps.<name>.schemas`.
 
 Create the pgweb environment file on the VPS:
 
