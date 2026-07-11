@@ -1,6 +1,9 @@
-{ pkgs, ... }:
+{ config, lib, pkgs, ... }:
 
 let
+  cfg = config.services.deployWebhook;
+  appsJson = builtins.toJSON cfg.apps;
+
   deployWebhook = pkgs.writeText "deploy-webhook.py" ''
     import http.server
     import json
@@ -9,10 +12,8 @@ let
     import subprocess
 
     token = os.environ["DEPLOY_WEBHOOK_TOKEN"]
-    port = int(os.environ.get("DEPLOY_WEBHOOK_PORT", "9010"))
-    apps = {
-      "monobara-codex": "monobara-deploy@{tag}.service",
-    }
+    port = int(os.environ.get("DEPLOY_WEBHOOK_PORT", "${toString cfg.port}"))
+    apps = ${appsJson}
     tag_pattern = re.compile(r"^[A-Za-z0-9._-]+$")
 
     class Handler(http.server.BaseHTTPRequestHandler):
@@ -36,14 +37,14 @@ let
 
         tag = payload.get("tag")
         repo = payload.get("repo")
-        if app == "monobara-codex" and repo != "Aszusz/monobara-codex":
+        if repo != apps[app]["repo"]:
           self.send_error(400, "unexpected repo")
           return
         if not isinstance(tag, str) or not tag_pattern.match(tag):
           self.send_error(400, "invalid tag")
           return
 
-        unit = apps[app].format(tag=tag)
+        unit = apps[app]["unit"].format(tag=tag)
         result = subprocess.run(
           ["${pkgs.systemd}/bin/systemctl", "start", unit],
           text=True,
@@ -73,6 +74,27 @@ let
   '';
 in
 {
+  options.services.deployWebhook = {
+    enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+    };
+    port = lib.mkOption {
+      type = lib.types.port;
+      default = 9010;
+    };
+    apps = lib.mkOption {
+      default = { };
+      type = lib.types.attrsOf (lib.types.submodule {
+        options = {
+          repo = lib.mkOption { type = lib.types.str; };
+          unit = lib.mkOption { type = lib.types.str; };
+        };
+      });
+    };
+  };
+
+  config = lib.mkIf cfg.enable {
   systemd.tmpfiles.rules = [
     "d /var/lib/deploy-webhook 0700 root root -"
   ];
@@ -92,5 +114,6 @@ in
       NoNewPrivileges = true;
     };
     unitConfig.ConditionPathExists = "/var/lib/deploy-webhook/env";
+  };
   };
 }

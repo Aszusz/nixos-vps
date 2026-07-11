@@ -39,9 +39,7 @@
 
   boot.loader.grub.enable = true;
 
-  environment.systemPackages = [ pkgs.git pkgs.podman ];
-
-  virtualisation.podman.enable = true;
+  environment.systemPackages = [ pkgs.git ];
 
   programs.ssh.knownHosts.github = {
     hostNames = [ "github.com" ];
