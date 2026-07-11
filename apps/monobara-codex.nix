@@ -86,7 +86,6 @@ in
     after = [ "network-online.target" "monobara-codex-db.service" ];
     wants = [ "network-online.target" ];
     requires = [ "monobara-codex-db.service" ];
-    wantedBy = [ "multi-user.target" ];
     serviceConfig = {
       Restart = "always";
       RestartSec = "5s";
@@ -101,13 +100,31 @@ in
     description = "monobara-codex web container";
     after = [ "network-online.target" ];
     wants = [ "network-online.target" ];
-    wantedBy = [ "multi-user.target" ];
     serviceConfig = {
       Restart = "always";
       RestartSec = "5s";
       ExecStartPre = "-${pkgs.podman}/bin/podman rm -f monobara-codex-web";
       ExecStart = "${pkgs.podman}/bin/podman run --rm --name monobara-codex-web --publish 127.0.0.1:8080:80 localhost/monobara-codex-web:current";
       ExecStop = "${pkgs.podman}/bin/podman stop monobara-codex-web";
+    };
+  };
+
+  systemd.services.monobara-codex-start = {
+    description = "Start monobara-codex containers when deployed images exist";
+    after = [ "network-online.target" "monobara-codex-db.service" ];
+    wants = [ "network-online.target" ];
+    requires = [ "monobara-codex-db.service" ];
+    wantedBy = [ "multi-user.target" ];
+    serviceConfig = {
+      Type = "oneshot";
+      ExecStart = pkgs.writeShellScript "monobara-codex-start" ''
+        set -euo pipefail
+
+        if ${pkgs.podman}/bin/podman image exists localhost/monobara-codex-api:current \
+          && ${pkgs.podman}/bin/podman image exists localhost/monobara-codex-web:current; then
+          ${pkgs.systemd}/bin/systemctl start monobara-codex-api.service monobara-codex-web.service
+        fi
+      '';
     };
   };
 
