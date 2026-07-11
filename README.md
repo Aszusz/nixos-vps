@@ -106,7 +106,7 @@ The `monobara-codex` admin UI is configured at:
 https://monobara-db.admin.typestrict.dev
 ```
 
-Nginx proxies this host to pgweb on `127.0.0.1:18081` and denies non-Tailscale source addresses. Public DNS should point `*.admin.typestrict.dev` at the VPS public IP for ACME, while Tailscale split DNS should send `admin.typestrict.dev` to the VPS Tailscale IP `100.74.236.19`. The VPS runs dnsmasq on `tailscale0` and answers `*.admin.typestrict.dev` as `100.74.236.19`. Public clients should receive `403 Forbidden`.
+Nginx proxies this host to pgweb on `127.0.0.1:18081` and denies non-Tailscale source addresses. Public DNS should point `*.admin.typestrict.dev` at the VPS public IP for ACME, while Tailscale split DNS should send `admin.typestrict.dev` to the VPS Tailscale IP `100.74.236.19`. The VPS runs dnsmasq on `tailscale0`, answers `*.admin.typestrict.dev` as `100.74.236.19`, and forwards other DNS queries to public resolvers. Public clients should receive `403 Forbidden`.
 
 Create a read-only database user before enabling access. Example SQL for the `monobara` database:
 

@@ -89,6 +89,7 @@
       bind-interfaces = true;
       interface = "tailscale0";
       no-resolv = true;
+      server = [ "1.1.1.1" "8.8.8.8" ];
       address = "/admin.typestrict.dev/100.74.236.19";
     };
   };
