@@ -5,6 +5,7 @@ import os
 import subprocess
 import sys
 import time
+from pathlib import Path
 from urllib.parse import unquote, urlparse
 
 
@@ -75,6 +76,26 @@ def quote_literal(value):
     return "'" + value.replace("'", "''") + "'"
 
 
+def render_sql(args):
+    template = Path(__file__).with_suffix(".sql").read_text()
+    schema_array = "ARRAY[{}]".format(
+        ",".join(quote_literal(schema) for schema in args.schemas)
+    )
+    replacements = {
+        "__READONLY_ROLE__": quote_ident(args.readonly_role),
+        "__READONLY_ROLE_LITERAL__": quote_literal(args.readonly_role),
+        "__READONLY_PASSWORD__": quote_literal(readonly_password()),
+        "__DATABASE__": quote_ident(required_env("POSTGRES_DB")),
+        "__DATABASE_OWNER__": quote_ident(required_env("POSTGRES_USER")),
+        "__SCHEMA_ARRAY__": schema_array,
+    }
+
+    sql = template
+    for placeholder, value in replacements.items():
+        sql = sql.replace(placeholder, value)
+    return sql
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Ensure pgweb read-only PostgreSQL role and schema grants."
@@ -92,43 +113,9 @@ def main():
 
     wait_for_postgres(psql_args, env)
 
-    readonly_role = quote_ident(args.readonly_role)
-    readonly_role_literal = quote_literal(args.readonly_role)
-    password = quote_literal(readonly_password())
-    database = quote_ident(required_env("POSTGRES_DB"))
-    database_owner = quote_ident(required_env("POSTGRES_USER"))
-    schema_array = "ARRAY[{}]".format(
-        ",".join(quote_literal(schema) for schema in args.schemas)
-    )
-
-    sql = rf"""
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = {readonly_role_literal}) THEN
-    CREATE ROLE {readonly_role} LOGIN PASSWORD {password};
-  ELSE
-    ALTER ROLE {readonly_role} WITH LOGIN PASSWORD {password};
-  END IF;
-END $$;
-
-GRANT CONNECT ON DATABASE {database} TO {readonly_role};
-
-SELECT format('GRANT USAGE ON SCHEMA %I TO {readonly_role}', schema_name)
-FROM unnest({schema_array}::text[]) AS schema_name
-\gexec
-
-SELECT format('GRANT SELECT ON ALL TABLES IN SCHEMA %I TO {readonly_role}', schema_name)
-FROM unnest({schema_array}::text[]) AS schema_name
-\gexec
-
-SELECT format('ALTER DEFAULT PRIVILEGES FOR ROLE {database_owner} IN SCHEMA %I GRANT SELECT ON TABLES TO {readonly_role}', schema_name)
-FROM unnest({schema_array}::text[]) AS schema_name
-\gexec
-"""
-
     subprocess.run(
         psql_args,
-        input=sql,
+        input=render_sql(args),
         text=True,
         check=True,
         env=env,

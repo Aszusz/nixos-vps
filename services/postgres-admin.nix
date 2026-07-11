@@ -3,7 +3,11 @@
 let
   cfg = config.services.postgresAdmin;
 
-  pgwebDbAccess = ../scripts/pgweb-db-access.py;
+  pgwebDbAccess = pkgs.runCommand "pgweb-db-access" { } ''
+    mkdir -p $out
+    cp ${../scripts/pgweb-db-access.py} $out/pgweb-db-access.py
+    cp ${../scripts/pgweb-db-access.sql} $out/pgweb-db-access.sql
+  '';
 
   mkSchemaArgs = schemas:
     lib.concatMap (schema: [ "--schema" schema ]) schemas;
@@ -21,7 +25,7 @@ let
         EnvironmentFile = [ app.appEnvFile app.envFile ];
         ExecStart = lib.escapeShellArgs ([
           (lib.getExe pkgs.python3)
-          pgwebDbAccess
+          "${pgwebDbAccess}/pgweb-db-access.py"
           "--psql"
           (lib.getExe' pkgs.postgresql "psql")
           "--readonly-role"
