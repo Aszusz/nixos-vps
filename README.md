@@ -115,8 +115,13 @@ CREATE USER monobara_readonly WITH PASSWORD 'change-me';
 GRANT CONNECT ON DATABASE monobara TO monobara_readonly;
 GRANT USAGE ON SCHEMA public TO monobara_readonly;
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO monobara_readonly;
+GRANT USAGE ON SCHEMA drizzle TO monobara_readonly;
+GRANT SELECT ON ALL TABLES IN SCHEMA drizzle TO monobara_readonly;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO monobara_readonly;
+ALTER DEFAULT PRIVILEGES IN SCHEMA drizzle GRANT SELECT ON TABLES TO monobara_readonly;
 ```
+
+Repeat the schema grants for any additional app-owned schemas that pgweb should inspect.
 
 Create the pgweb environment file on the VPS:
 
