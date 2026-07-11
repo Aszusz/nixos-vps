@@ -159,6 +159,7 @@ in
       '';
     };
 
+    locations."/health".proxyPass = "http://127.0.0.1:3000";
     locations."/api/".proxyPass = "http://127.0.0.1:3000";
     locations."/rpc/".proxyPass = "http://127.0.0.1:3000";
     locations."/".proxyPass = "http://127.0.0.1:8080";
