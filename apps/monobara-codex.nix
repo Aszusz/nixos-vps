@@ -20,7 +20,12 @@ lib.mkMerge [
   {
     services.deployWebhook.apps.monobara-codex = {
       repo = "Aszusz/monobara-codex";
-      unit = "monobara-codex-deploy@{tag}.service";
+      composePath = "docker-compose.yml";
+      images = {
+        WEB_IMAGE = "ghcr.io/aszusz/monobara-codex-web";
+        API_IMAGE = "ghcr.io/aszusz/monobara-codex-api";
+      };
+      unit = "monobara-codex-deploy@{request}.service";
     };
   }
 ]
