@@ -24,7 +24,11 @@ https://fullstack.typestrict.dev/deploy/<app>
 
 The webhook runs locally as `deploy-webhook.service` and starts an app-specific deploy unit with a generated request id, for example `monobara-codex-deploy@<request-id>.service`.
 
-App stacks are run with Docker Compose. Each app repo owns its `docker-compose.yml`; this repo owns the host wiring around it: Docker, nginx, ACME, systemd, env-file locations, webhook validation, and the deploy unit. During deploy the VPS fetches the Compose file from the exact app commit supplied by CI and verifies its SHA256 before running it.
+App stacks are run with Docker Compose. Each app repo owns its `docker-compose.yml`; this repo owns the host wiring around it: Docker, nginx, ACME, systemd, env-file locations, webhook validation, Compose policy checks, and the deploy unit. During deploy the VPS fetches the Compose file from the exact app commit supplied by CI and verifies its SHA256 before running it.
+
+App repositories are trusted deployment code, similar to a full-stack app deployed to Vercel. The platform still rejects dangerous Compose capabilities before deploy: privileged containers, host namespaces, Docker socket mounts, devices, extra capabilities, unsafe security options, non-loopback port publishing, and host bind mounts outside the app directory.
+
+Deploy requests are authenticated with an HMAC signature over the exact JSON body. The VPS rejects stale timestamps and replays. Image refs may use either the pushed tag or an immutable digest; digests are preferred.
 
 Required secret files for `monobara-codex`:
 
@@ -34,7 +38,7 @@ sudo install -d -m 0700 -o root -g root /var/lib/deploy-webhook /var/lib/monobar
 
 ```sh
 sudo install -m 0600 -o root -g root /dev/stdin /var/lib/deploy-webhook/env <<'EOF'
-DEPLOY_WEBHOOK_TOKEN=change-me
+DEPLOY_WEBHOOK_SECRET=change-me
 DEPLOY_WEBHOOK_PORT=9010
 EOF
 ```
@@ -75,13 +79,19 @@ sudo nixos-rebuild switch --flake /etc/nixos#ovh-vps
 commit=<full-monobara-codex-commit-sha>
 tag=v0.2.10
 compose_sha256=$(curl -fsSL "https://raw.githubusercontent.com/Aszusz/monobara-codex/$commit/docker-compose.yml" | sha256sum | cut -d ' ' -f1)
+body=$(printf '{"repo":"Aszusz/monobara-codex","tag":"%s","commit":"%s","composeSha256":"%s","images":{"WEB_IMAGE":"ghcr.io/aszusz/monobara-codex-web:%s","API_IMAGE":"ghcr.io/aszusz/monobara-codex-api:%s"}}' "$tag" "$commit" "$compose_sha256" "$tag" "$tag")
+timestamp=$(date +%s)
+signature=$(printf '%s.%s' "$timestamp" "$body" | openssl dgst -sha256 -hmac "$DEPLOY_WEBHOOK_SECRET" -binary | xxd -p -c 256)
 curl -fsS \
   -X POST \
-  -H "Authorization: Bearer $DEPLOY_WEBHOOK_TOKEN" \
+  -H "X-Deploy-Timestamp: $timestamp" \
+  -H "X-Deploy-Signature: sha256=$signature" \
   -H "Content-Type: application/json" \
-  --data "{\"repo\":\"Aszusz/monobara-codex\",\"tag\":\"$tag\",\"commit\":\"$commit\",\"composeSha256\":\"$compose_sha256\",\"images\":{\"WEB_IMAGE\":\"ghcr.io/aszusz/monobara-codex-web:$tag\",\"API_IMAGE\":\"ghcr.io/aszusz/monobara-codex-api:$tag\"}}" \
+  --data "$body" \
   https://fullstack.typestrict.dev/deploy/monobara-codex
 curl -fsS https://fullstack.typestrict.dev/health
 ```
 
-To add another app, add a small app declaration under `apps/` using `modules/compose-app.nix`, register its webhook unit, Compose path, and image allowlist in `services.deployWebhook.apps`, create app-specific env files under `/var/lib/<app>/`, and have that repo's CD workflow POST release metadata with the bearer token.
+To deploy immutable image digests instead of tags, send refs like `ghcr.io/aszusz/monobara-codex-web@sha256:<digest>` in `images`. The digest must still use the configured image repository prefix.
+
+To add another app, add a small app declaration under `apps/` using `modules/compose-app.nix`, register its webhook unit, Compose path, and image allowlist in `services.deployWebhook.apps`, create app-specific env files under `/var/lib/<app>/`, and have that repo's CD workflow POST signed release metadata with the shared deploy secret.
