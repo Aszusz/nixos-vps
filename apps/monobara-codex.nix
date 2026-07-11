@@ -6,39 +6,27 @@ let
   ghcrEnv = "${appDir}/ghcr.env";
   imageWeb = "ghcr.io/aszusz/monobara-codex-web";
   imageApi = "ghcr.io/aszusz/monobara-codex-api";
-
-  deployScript = pkgs.writeShellScript "monobara-deploy" ''
-    set -euo pipefail
-
-    tag="''${1:?tag is required}"
-    exec 9>/run/monobara-codex-deploy.lock
-    ${pkgs.util-linux}/bin/flock -n 9
-
-    ${pkgs.podman}/bin/podman login ghcr.io \
-      --username "$GHCR_USERNAME" \
-      --password-stdin < "$GHCR_TOKEN_FILE"
-
-    ${pkgs.podman}/bin/podman pull "${imageWeb}:$tag"
-    ${pkgs.podman}/bin/podman pull "${imageApi}:$tag"
-    ${pkgs.podman}/bin/podman tag "${imageWeb}:$tag" localhost/monobara-codex-web:current
-    ${pkgs.podman}/bin/podman tag "${imageApi}:$tag" localhost/monobara-codex-api:current
-
-    ${pkgs.podman}/bin/podman run --rm \
-      --network=host \
-      --env-file ${appEnv} \
-      localhost/monobara-codex-api:current \
-      bun --cwd packages/db drizzle-kit migrate
-
-    ${pkgs.systemd}/bin/systemctl restart monobara-codex-api.service monobara-codex-web.service
-    for attempt in $(${pkgs.coreutils}/bin/seq 1 30); do
-      if ${pkgs.curl}/bin/curl -fsS http://127.0.0.1:3000/health >/dev/null; then
-        exit 0
-      fi
-      ${pkgs.coreutils}/bin/sleep 1
-    done
-
-    ${pkgs.curl}/bin/curl -fsS http://127.0.0.1:3000/health >/dev/null
-  '';
+  appConfig = pkgs.writeText "monobara-codex-app.json" (builtins.toJSON {
+    name = "monobara-codex";
+    appEnv = appEnv;
+    podman = "${pkgs.podman}/bin/podman";
+    systemctl = "${pkgs.systemd}/bin/systemctl";
+    curl = "${pkgs.curl}/bin/curl";
+    images = {
+      web = imageWeb;
+      api = imageApi;
+    };
+    localImages = {
+      web = "localhost/monobara-codex-web:current";
+      api = "localhost/monobara-codex-api:current";
+    };
+    migration = {
+      image = "api";
+      command = [ "bun" "--cwd" "packages/db" "drizzle-kit" "migrate" ];
+    };
+    restartServices = [ "monobara-codex-api.service" "monobara-codex-web.service" ];
+    healthUrl = "http://127.0.0.1:3000/health";
+  });
 in
 {
   systemd.tmpfiles.rules = [
@@ -55,7 +43,7 @@ in
     };
     authentication = pkgs.lib.mkForce ''
       local all all peer
-      host monobara monobara 127.0.0.1/32 scram-sha-256
+      host monobara all 127.0.0.1/32 scram-sha-256
     '';
   };
 
@@ -67,23 +55,9 @@ in
     serviceConfig = {
       Type = "oneshot";
       EnvironmentFile = appEnv;
+      User = "postgres";
       RemainAfterExit = true;
-      ExecStart = pkgs.writeShellScript "monobara-codex-db" ''
-        set -euo pipefail
-
-        ${pkgs.sudo}/bin/sudo -u postgres ${pkgs.postgresql_18}/bin/psql --set=ON_ERROR_STOP=1 --set=password="$MONOBARA_DB_PASSWORD" <<SQL
-        DO \$\$
-        BEGIN
-          IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'monobara') THEN
-            CREATE ROLE monobara LOGIN;
-          END IF;
-        END
-        \$\$;
-        ALTER ROLE monobara WITH PASSWORD :'password';
-        SELECT 'CREATE DATABASE monobara OWNER monobara'
-        WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'monobara')\gexec
-        SQL
-      '';
+      ExecStart = "${pkgs.python3}/bin/python ${../scripts/ensure-app-db.py} --psql ${pkgs.postgresql_18}/bin/psql";
     };
     unitConfig.ConditionPathExists = appEnv;
   };
@@ -124,18 +98,11 @@ in
     wantedBy = [ "multi-user.target" ];
     serviceConfig = {
       Type = "oneshot";
-      ExecStart = pkgs.writeShellScript "monobara-codex-start" ''
-        set -euo pipefail
-
-        if ${pkgs.podman}/bin/podman image exists localhost/monobara-codex-api:current \
-          && ${pkgs.podman}/bin/podman image exists localhost/monobara-codex-web:current; then
-          ${pkgs.systemd}/bin/systemctl start monobara-codex-api.service monobara-codex-web.service
-        fi
-      '';
+      ExecStart = "${pkgs.python3}/bin/python ${../scripts/start-app.py} ${appConfig}";
     };
   };
 
-  systemd.services."monobara-deploy@" = {
+  systemd.services."monobara-codex-deploy@" = {
     description = "Deploy monobara-codex image tag %i";
     after = [ "network-online.target" "postgresql.service" ];
     wants = [ "network-online.target" ];
@@ -143,7 +110,7 @@ in
     serviceConfig = {
       Type = "oneshot";
       EnvironmentFile = [ appEnv ghcrEnv ];
-      ExecStart = "${deployScript} %i";
+      ExecStart = "${pkgs.python3}/bin/python ${../scripts/deploy-app.py} ${appConfig} %i";
     };
     unitConfig.ConditionPathExists = [ appEnv ghcrEnv ];
   };
@@ -163,5 +130,16 @@ in
     locations."/api/".proxyPass = "http://127.0.0.1:3000";
     locations."/rpc/".proxyPass = "http://127.0.0.1:3000";
     locations."/".proxyPass = "http://127.0.0.1:8080";
+  };
+
+  services.postgresAdmin.apps.monobara-codex = {
+    domain = "monobara-db.admin.typestrict.dev";
+    port = 18081;
+    readOnlyRole = "monobara_readonly";
+    schemas = [ "public" "drizzle" ];
+  };
+
+  services.deployWebhook.apps.monobara-codex = {
+    repo = "Aszusz/monobara-codex";
   };
 }

@@ -1,96 +1,98 @@
-{ pkgs, ... }:
+{ config, lib, pkgs, ... }:
 
 let
-  deployWebhook = pkgs.writeText "deploy-webhook.py" ''
-    import http.server
-    import json
-    import os
-    import re
-    import subprocess
-
-    token = os.environ["DEPLOY_WEBHOOK_TOKEN"]
-    port = int(os.environ.get("DEPLOY_WEBHOOK_PORT", "9010"))
-    apps = {
-      "monobara-codex": "monobara-deploy@{tag}.service",
-    }
-    tag_pattern = re.compile(r"^[A-Za-z0-9._-]+$")
-
-    class Handler(http.server.BaseHTTPRequestHandler):
-      def do_POST(self):
-        app = self.path.removeprefix("/deploy/").strip("/")
-        if app not in apps:
-          self.send_error(404, "unknown app")
-          return
-
-        expected = f"Bearer {token}"
-        if self.headers.get("Authorization") != expected:
-          self.send_error(401, "unauthorized")
-          return
-
-        try:
-          length = int(self.headers.get("Content-Length", "0"))
-          payload = json.loads(self.rfile.read(length) or b"{}")
-        except Exception:
-          self.send_error(400, "invalid json")
-          return
-
-        tag = payload.get("tag")
-        repo = payload.get("repo")
-        if app == "monobara-codex" and repo != "Aszusz/monobara-codex":
-          self.send_error(400, "unexpected repo")
-          return
-        if not isinstance(tag, str) or not tag_pattern.match(tag):
-          self.send_error(400, "invalid tag")
-          return
-
-        unit = apps[app].format(tag=tag)
-        result = subprocess.run(
-          ["${pkgs.systemd}/bin/systemctl", "start", unit],
-          text=True,
-          capture_output=True,
-        )
-        if result.returncode != 0:
-          self.send_response(500)
-          self.send_header("Content-Type", "application/json")
-          self.end_headers()
-          self.wfile.write(json.dumps({
-            "ok": False,
-            "unit": unit,
-            "stderr": result.stderr,
-          }).encode())
-          return
-
-        self.send_response(202)
-        self.send_header("Content-Type", "application/json")
-        self.end_headers()
-        self.wfile.write(json.dumps({"ok": True, "unit": unit}).encode())
-
-      def log_message(self, format, *args):
-        print(f"{self.address_string()} - {format % args}", flush=True)
-
-    server = http.server.ThreadingHTTPServer(("127.0.0.1", port), Handler)
-    server.serve_forever()
-  '';
+  cfg = config.services.deployWebhook;
+  appsJson = builtins.toJSON cfg.apps;
+  appsConfig = pkgs.writeText "deploy-webhook-apps.json" appsJson;
+  appNames = builtins.attrNames cfg.apps;
+  allowedUnitPrefixes = builtins.toJSON (
+    map (app: "${app}-deploy@") appNames
+  );
 in
 {
-  systemd.tmpfiles.rules = [
-    "d /var/lib/deploy-webhook 0700 root root -"
-  ];
-
-  systemd.services.deploy-webhook = {
-    description = "Deployment webhook receiver";
-    after = [ "network.target" ];
-    wantedBy = [ "multi-user.target" ];
-    serviceConfig = {
-      EnvironmentFile = "/var/lib/deploy-webhook/env";
-      ExecStart = "${pkgs.python3}/bin/python ${deployWebhook}";
-      Restart = "always";
-      RestartSec = "5s";
-      ProtectSystem = "strict";
-      ProtectHome = true;
-      PrivateTmp = true;
-      NoNewPrivileges = true;
+  options.services.deployWebhook = {
+    enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
     };
-    unitConfig.ConditionPathExists = "/var/lib/deploy-webhook/env";
+
+    port = lib.mkOption {
+      type = lib.types.port;
+      default = 9010;
+    };
+
+    apps = lib.mkOption {
+      default = { };
+      type = lib.types.attrsOf (lib.types.submodule {
+        options.repo = lib.mkOption { type = lib.types.str; };
+      });
+    };
+  };
+
+  config = lib.mkIf cfg.enable {
+    users.groups.deploy-webhook = { };
+    users.users.deploy-webhook = {
+      isSystemUser = true;
+      group = "deploy-webhook";
+    };
+
+    security.polkit.enable = true;
+    security.polkit.extraConfig = ''
+      polkit.addRule(function(action, subject) {
+        if (action.id !== "org.freedesktop.systemd1.manage-units" || subject.user !== "deploy-webhook") {
+          return;
+        }
+
+        var verb = action.lookup("verb");
+        var unit = action.lookup("unit");
+        var allowedUnitPrefixes = ${allowedUnitPrefixes};
+
+        if (verb !== "start" || !unit) {
+          return;
+        }
+
+        for (var i = 0; i < allowedUnitPrefixes.length; i++) {
+          if (unit.indexOf(allowedUnitPrefixes[i]) === 0 && unit.slice(-8) === ".service") {
+            return polkit.Result.YES;
+          }
+        }
+      });
+    '';
+
+    systemd.tmpfiles.rules = [
+      "d /var/lib/deploy-webhook 0700 root root -"
+      "d /run/deploy-webhook 0700 deploy-webhook deploy-webhook -"
+      "d /run/deploy-webhook/replay 0700 deploy-webhook deploy-webhook -"
+    ];
+
+    systemd.services.deploy-webhook = {
+      description = "Deployment webhook receiver";
+      after = [ "network.target" ];
+      wantedBy = [ "multi-user.target" ];
+      serviceConfig = {
+        User = "deploy-webhook";
+        Group = "deploy-webhook";
+        UMask = "0077";
+        EnvironmentFile = "/var/lib/deploy-webhook/env";
+        Environment = "SYSTEMCTL=${pkgs.systemd}/bin/systemctl";
+        ExecStart = "${pkgs.python3}/bin/python ${../scripts/deploy-webhook.py} ${appsConfig} ${toString cfg.port}";
+        Restart = "always";
+        RestartSec = "5s";
+        ProtectSystem = "strict";
+        ReadWritePaths = [ "/run/deploy-webhook" ];
+        ProtectHome = true;
+        PrivateTmp = true;
+        PrivateDevices = true;
+        ProtectKernelTunables = true;
+        ProtectKernelModules = true;
+        ProtectControlGroups = true;
+        RestrictAddressFamilies = [ "AF_INET" "AF_INET6" "AF_UNIX" ];
+        LockPersonality = true;
+        MemoryDenyWriteExecute = true;
+        SystemCallArchitectures = "native";
+        NoNewPrivileges = true;
+      };
+      unitConfig.ConditionPathExists = "/var/lib/deploy-webhook/env";
+    };
   };
 }

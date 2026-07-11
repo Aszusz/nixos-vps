@@ -4,6 +4,7 @@
   imports = [
     ./apps/monobara-codex.nix
     ./services/deploy-webhook.nix
+    ./services/postgres-admin.nix
   ];
 
   networking = {
@@ -11,7 +12,8 @@
     useDHCP = true;
     firewall.allowedTCPPorts = [ 80 443 ];
     firewall.allowedUDPPorts = [ 41641 ];
-    firewall.interfaces."tailscale0".allowedTCPPorts = [ 22 ];
+    firewall.interfaces."tailscale0".allowedTCPPorts = [ 22 53 ];
+    firewall.interfaces."tailscale0".allowedUDPPorts = [ 53 ];
   };
 
   security.acme = {
@@ -54,18 +56,11 @@
     wants = [ "network-online.target" ];
     serviceConfig = {
       Type = "oneshot";
-      ExecStart = pkgs.writeShellScript "pull-nixos-config" ''
-        set -eu
-        repo=git@github.com:Aszusz/nixos-vps.git
-        ssh_command="${pkgs.openssh}/bin/ssh -i /root/.ssh/nixos-vps_deploy -o IdentitiesOnly=yes"
-        if [ -d /etc/nixos/.git ]; then
-          ${pkgs.git}/bin/git -c core.sshCommand="$ssh_command" -C /etc/nixos fetch origin main
-          ${pkgs.git}/bin/git -C /etc/nixos reset --hard origin/main
-        else
-          rm -rf /etc/nixos
-          ${pkgs.git}/bin/git -c core.sshCommand="$ssh_command" clone --branch main "$repo" /etc/nixos
-        fi
-      '';
+      Environment = [
+        "GIT=${pkgs.git}/bin/git"
+        "SSH=${pkgs.openssh}/bin/ssh"
+      ];
+      ExecStart = "${pkgs.python3}/bin/python ${./scripts/pull-nixos-config.py}";
     };
     unitConfig.ConditionPathExists = "/root/.ssh/nixos-vps_deploy";
   };
@@ -97,6 +92,17 @@
   };
 
   services.tailscale.enable = true;
+
+  services.dnsmasq = {
+    enable = true;
+    settings = {
+      bind-interfaces = true;
+      interface = "tailscale0";
+      no-resolv = true;
+      server = [ "1.1.1.1" "8.8.8.8" ];
+      address = "/admin.typestrict.dev/100.74.236.19";
+    };
+  };
 
   security.sudo.wheelNeedsPassword = false;
 
