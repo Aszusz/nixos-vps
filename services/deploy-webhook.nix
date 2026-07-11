@@ -161,6 +161,7 @@ in
       Restart = "always";
       RestartSec = "5s";
       ProtectSystem = "strict";
+      ReadWritePaths = [ "/run/deploy-webhook" ];
       ProtectHome = true;
       PrivateTmp = true;
       NoNewPrivileges = true;
