@@ -118,7 +118,7 @@ CLOUDBEAVER_DATABASE_URL=postgres://monobara_readonly:change-me@127.0.0.1:15432/
 EOF
 ```
 
-Use that connection string when adding the PostgreSQL connection inside CloudBeaver.
+When adding the PostgreSQL connection inside CloudBeaver, use the same credentials with host `host.docker.internal` and port `15432`.
 
 After deploy, verify from the VPS:
 

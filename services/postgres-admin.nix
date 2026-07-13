@@ -67,6 +67,8 @@ let
           "--rm"
           "--name"
           "cloudbeaver-${name}"
+          "--add-host"
+          "host.docker.internal:host-gateway"
           "--publish"
           "127.0.0.1:${toString app.port}:8978"
           "--volume"
