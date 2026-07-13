@@ -98,7 +98,7 @@ To add another app, add a small app declaration under `apps/` using `modules/com
 
 ## Postgres admin UI
 
-Per-app Postgres inspection is provided by pgweb. Each app gets a separate read-only pgweb instance, separate connection string, and separate Tailscale-only virtual host.
+Per-app Postgres inspection is provided by CloudBeaver. Each app gets a separate CloudBeaver instance, separate read-only connection string, and separate Tailscale-only virtual host.
 
 The `monobara-codex` admin UI is configured at:
 
@@ -106,22 +106,24 @@ The `monobara-codex` admin UI is configured at:
 https://monobara-db.admin.typestrict.dev
 ```
 
-Nginx proxies this host to pgweb on `127.0.0.1:18081` and denies non-Tailscale source addresses. Public DNS should point `*.admin.typestrict.dev` at the VPS public IP for ACME, while Tailscale split DNS should send `admin.typestrict.dev` to the VPS Tailscale IP `100.74.236.19`. The VPS runs dnsmasq on `tailscale0`, answers `*.admin.typestrict.dev` as `100.74.236.19`, and forwards other DNS queries to public resolvers. Public clients should receive `403 Forbidden`.
+Nginx proxies this host to CloudBeaver on `127.0.0.1:18081` and denies non-Tailscale source addresses. Public DNS should point `*.admin.typestrict.dev` at the VPS public IP for ACME, while Tailscale split DNS should send `admin.typestrict.dev` to the VPS Tailscale IP `100.74.236.19`. The VPS runs dnsmasq on `tailscale0`, answers `*.admin.typestrict.dev` as `100.74.236.19`, and forwards other DNS queries to public resolvers. Public clients should receive `403 Forbidden`.
 
 The NixOS config creates or updates the read-only Postgres role and grants access to the app-owned schemas declared in `services.postgresAdmin.apps.<name>.schemas`.
 
-Create the pgweb environment file on the VPS:
+Create the CloudBeaver read-only database environment file on the VPS:
 
 ```sh
-sudo install -m 0600 -o root -g root /dev/stdin /var/lib/monobara-codex/pgweb.env <<'EOF'
-PGWEB_DATABASE_URL=postgres://monobara_readonly:change-me@127.0.0.1:15432/monobara?sslmode=disable
+sudo install -m 0600 -o root -g root /dev/stdin /var/lib/monobara-codex/cloudbeaver.env <<'EOF'
+CLOUDBEAVER_DATABASE_URL=postgres://monobara_readonly:change-me@127.0.0.1:15432/monobara?sslmode=disable
 EOF
 ```
+
+Use that connection string when adding the PostgreSQL connection inside CloudBeaver.
 
 After deploy, verify from the VPS:
 
 ```sh
-systemctl is-active pgweb-monobara-codex nginx tailscaled
+systemctl is-active cloudbeaver-monobara-codex nginx tailscaled
 curl -fsS -o /dev/null http://127.0.0.1:18081
 ```
 

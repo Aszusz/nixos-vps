@@ -28,10 +28,10 @@ def required_env(name):
 
 
 def readonly_password():
-    url = required_env("PGWEB_DATABASE_URL")
+    url = required_env("CLOUDBEAVER_DATABASE_URL")
     password = urlparse(url).password
     if not password:
-        raise SystemExit("PGWEB_DATABASE_URL must include the read-only role password")
+        raise SystemExit("CLOUDBEAVER_DATABASE_URL must include the read-only role password")
     return unquote(password)
 
 
@@ -98,7 +98,7 @@ def render_sql(args):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Ensure pgweb read-only PostgreSQL role and schema grants."
+        description="Ensure CloudBeaver read-only PostgreSQL role and schema grants."
     )
     parser.add_argument("--psql", required=True)
     parser.add_argument("--readonly-role", required=True)

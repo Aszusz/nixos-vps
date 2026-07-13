@@ -3,19 +3,19 @@
 let
   cfg = config.services.postgresAdmin;
 
-  pgwebDbAccess = pkgs.runCommand "pgweb-db-access" { } ''
+  cloudbeaverDbAccess = pkgs.runCommand "cloudbeaver-db-access" { } ''
     mkdir -p $out
-    cp ${../scripts/pgweb-db-access.py} $out/pgweb-db-access.py
-    cp ${../scripts/pgweb-db-access.sql} $out/pgweb-db-access.sql
+    cp ${../scripts/cloudbeaver-db-access.py} $out/cloudbeaver-db-access.py
+    cp ${../scripts/cloudbeaver-db-access.sql} $out/cloudbeaver-db-access.sql
   '';
 
   mkSchemaArgs = schemas:
     lib.concatMap (schema: [ "--schema" schema ]) schemas;
 
   mkDbAccessService = name: app: {
-    name = "pgweb-${name}-db-access";
+    name = "cloudbeaver-${name}-db-access";
     value = {
-      description = "Ensure pgweb PostgreSQL read-only access for ${name}";
+      description = "Ensure CloudBeaver PostgreSQL read-only access for ${name}";
       after = [ "network-online.target" ];
       wants = [ "network-online.target" ];
       wantedBy = [ "multi-user.target" ];
@@ -25,7 +25,7 @@ let
         EnvironmentFile = [ app.appEnvFile app.envFile ];
         ExecStart = lib.escapeShellArgs ([
           (lib.getExe pkgs.python3)
-          "${pgwebDbAccess}/pgweb-db-access.py"
+          "${cloudbeaverDbAccess}/cloudbeaver-db-access.py"
           "--psql"
           (lib.getExe' pkgs.postgresql "psql")
           "--readonly-role"
@@ -48,43 +48,35 @@ let
     };
   };
 
-  mkPgwebService = name: app: {
-    name = "pgweb-${name}";
+  mkCloudBeaverService = name: app: {
+    name = "cloudbeaver-${name}";
     value = {
-      description = "pgweb PostgreSQL admin for ${name}";
-      after = [ "network-online.target" "pgweb-${name}-db-access.service" ];
-      wants = [ "network-online.target" "pgweb-${name}-db-access.service" ];
+      description = "CloudBeaver PostgreSQL admin for ${name}";
+      after = [ "network-online.target" "docker.service" "cloudbeaver-${name}-db-access.service" ];
+      wants = [ "network-online.target" "cloudbeaver-${name}-db-access.service" ];
+      requires = [ "docker.service" ];
       wantedBy = [ "multi-user.target" ];
       serviceConfig = {
-        DynamicUser = true;
-        UMask = "0077";
-        EnvironmentFile = app.envFile;
-        Environment = "HOME=/var/lib/pgweb-${name}";
-        ExecStart = lib.escapeShellArgs [
-          (lib.getExe pkgs.pgweb)
-          "--bind=127.0.0.1"
-          "--listen=${toString app.port}"
-          "--readonly"
-          "--lock-session"
-          "--skip-open"
+        ExecStartPre = [
+          "-${lib.escapeShellArgs [ (lib.getExe pkgs.docker) "rm" "-f" "cloudbeaver-${name}" ]}"
+          (lib.escapeShellArgs [ (lib.getExe pkgs.docker) "pull" app.image ])
         ];
+        ExecStart = lib.escapeShellArgs [
+          (lib.getExe pkgs.docker)
+          "run"
+          "--rm"
+          "--name"
+          "cloudbeaver-${name}"
+          "--publish"
+          "127.0.0.1:${toString app.port}:8978"
+          "--volume"
+          "cloudbeaver-${name}:/opt/cloudbeaver/workspace"
+          app.image
+        ];
+        ExecStop = lib.escapeShellArgs [ (lib.getExe pkgs.docker) "stop" "cloudbeaver-${name}" ];
         Restart = "always";
         RestartSec = "5s";
-        StateDirectory = "pgweb-${name}";
-        ProtectSystem = "strict";
-        ProtectHome = true;
-        PrivateTmp = true;
-        PrivateDevices = true;
-        ProtectKernelTunables = true;
-        ProtectKernelModules = true;
-        ProtectControlGroups = true;
-        RestrictAddressFamilies = [ "AF_INET" "AF_INET6" "AF_UNIX" ];
-        LockPersonality = true;
-        MemoryDenyWriteExecute = true;
-        SystemCallArchitectures = "native";
-        NoNewPrivileges = true;
       };
-      unitConfig.ConditionPathExists = app.envFile;
     };
   };
 
@@ -117,18 +109,18 @@ in
         options = {
           domain = lib.mkOption {
             type = lib.types.str;
-            description = "Tailscale-only virtual host for this app's pgweb instance.";
+            description = "Tailscale-only virtual host for this app's CloudBeaver instance.";
           };
 
           port = lib.mkOption {
             type = lib.types.port;
-            description = "Loopback port for this app's pgweb instance.";
+            description = "Loopback port for this app's CloudBeaver instance.";
           };
 
           envFile = lib.mkOption {
             type = lib.types.path;
-            default = "/var/lib/${name}/pgweb.env";
-            description = "Environment file containing PGWEB_DATABASE_URL.";
+            default = "/var/lib/${name}/cloudbeaver.env";
+            description = "Environment file containing CLOUDBEAVER_DATABASE_URL.";
           };
 
           appEnvFile = lib.mkOption {
@@ -140,13 +132,19 @@ in
           readOnlyRole = lib.mkOption {
             type = lib.types.str;
             default = "${builtins.replaceStrings [ "-" ] [ "_" ] name}_readonly";
-            description = "PostgreSQL role pgweb uses for read-only inspection.";
+            description = "PostgreSQL role CloudBeaver uses for read-only inspection.";
+          };
+
+          image = lib.mkOption {
+            type = lib.types.str;
+            default = "dbeaver/cloudbeaver:latest";
+            description = "CloudBeaver container image.";
           };
 
           schemas = lib.mkOption {
             type = lib.types.listOf lib.types.str;
             default = [ "public" ];
-            description = "Application-owned schemas pgweb may inspect.";
+            description = "Application-owned schemas CloudBeaver may inspect.";
           };
         };
       }));
@@ -154,9 +152,10 @@ in
   };
 
   config = lib.mkIf cfg.enable {
+    virtualisation.docker.enable = true;
     systemd.services =
       lib.listToAttrs (lib.mapAttrsToList mkDbAccessService cfg.apps)
-      // lib.listToAttrs (lib.mapAttrsToList mkPgwebService cfg.apps);
+      // lib.listToAttrs (lib.mapAttrsToList mkCloudBeaverService cfg.apps);
     services.nginx.virtualHosts = lib.listToAttrs (lib.mapAttrsToList mkNginxVhost cfg.apps);
   };
 }
